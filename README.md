@@ -1,6 +1,6 @@
 # Survey Agent – MVP
 
-This is a minimal Streamlit application that demonstrates how to generate **synthetic survey responses** from an LLM prompted with real interview transcripts.
+This is a Streamlit application that demonstrates how to generate **synthetic survey responses** from an LLM prompted with real interview transcripts.
 
 ## Quick start
 
