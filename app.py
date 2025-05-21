@@ -38,7 +38,7 @@ if "transcripts" in st.session_state:
     )
     num_respondents = st.slider("Synthetic respondents", 1, 200, 10)
     persona = st.radio(
-        "Persona", ["pollster", "marketer", "product manager"], horizontal=True
+        "Persona", ["Pollster", "Marketer", "Product Manager"], horizontal=True
     )
     run = st.button("Generate synthetic answers")
 

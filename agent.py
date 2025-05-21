@@ -25,7 +25,7 @@ def synthesize_answer(record, question: str, persona: str):
     )
 
     response = openai.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        model=os.getenv("OPENAI_MODEL", "gpt-4o"),
         messages=[{"role": "system", "content": prompt}],
         temperature=0.7,
         max_tokens=128,
