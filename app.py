@@ -50,55 +50,52 @@ else:
 if "transcripts" in st.session_state:
     df = st.session_state["transcripts"]
 
-    # --- Age slider -------------------------------------------------------
+    # Age
     if "age" in df.columns:
         age_min, age_max = int(df["age"].min()), int(df["age"].max())
-        age_range = st.sidebar.slider(
-            "Age range", age_min, age_max, (age_min, age_max)
-        )
+        age_range = st.sidebar.slider("Age range", age_min, age_max, (age_min, age_max))
         age_mask = df["age"].between(*age_range)
     else:
-        age_mask = True  # no age column present
+        age_mask = True
 
-    # --- Gender filter ----------------------------------------------------
+    # Gender
     if "gender" in df.columns:
         genders = sorted(df["gender"].dropna().unique())
-        gender_sel = st.sidebar.multiselect(
-            "Gender", options=genders, default=genders
-        )
+        gender_sel = st.sidebar.multiselect("Gender", genders, default=genders)
         gender_mask = df["gender"].isin(gender_sel)
     else:
         gender_mask = True
 
-    # --- Region filter ----------------------------------------------------
+    # Region
     if "region" in df.columns:
         regions = sorted(df["region"].dropna().unique())
-        region_sel = st.sidebar.multiselect(
-            "Region", options=regions, default=regions
-        )
+        region_sel = st.sidebar.multiselect("Region", regions, default=regions)
         region_mask = df["region"].isin(region_sel)
     else:
         region_mask = True
 
-    # Apply masks ----------------------------------------------------------
     filtered_df = df[age_mask & gender_mask & region_mask]
     st.sidebar.markdown(f"**Matched transcripts:** {len(filtered_df)}")
     st.session_state["filtered"] = filtered_df
 
 # -------------------------------------------------------------------------
-# 3 — Preview & survey builder (main pane)
+# 3 — Preview & survey builder
 # -------------------------------------------------------------------------
 if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     st.header("Transcript preview (after filters)")
     st.dataframe(st.session_state["filtered"].head())
 
     st.subheader("Survey builder")
-    question = st.text_area(
-        "Survey question",
+
+    questions_raw = st.text_area(
+        "Enter one question per line",
         "Who will you vote for in the upcoming election?",
-        height=100,
+        height=150,
     )
-    num_respondents = st.slider("Synthetic respondents", 1, 200, 10)
+    questions = [q.strip() for q in questions_raw.splitlines() if q.strip()]
+    num_questions = len(questions)
+
+    num_respondents = st.slider("Synthetic respondents per question", 1, 200, 10)
     persona = st.radio(
         "Persona",
         ["pollster", "marketer", "product manager"],
@@ -106,27 +103,39 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     )
 
     generate = st.button(
-        "Generate synthetic answers",
-        disabled=len(st.session_state["filtered"]) == 0,
+        f"Generate ({num_questions * num_respondents} answers)",
+        disabled=(num_questions == 0 or len(st.session_state["filtered"]) == 0),
     )
 
-    if generate and question:
+    if generate:
         with st.spinner("Generating answers…"):
             session = get_session(DB_PATH)
             results = []
 
-            for _ in range(num_respondents):
-                record = st.session_state["filtered"].sample(1).iloc[0]
-                answer, conf, _usage = synthesize_answer(record, question, persona)
-                add_response(session, record, question, answer, conf)
-                results.append(
-                    {
-                        "respondent_id": record["respondent_id"],
-                        "answer": answer,
-                        "confidence": conf,
-                    }
-                )
+            total_iters = num_questions * num_respondents
+            progress = st.progress(0)
+            counter_placeholder = st.empty()
+            counter = 0
 
+            for q in questions:
+                for _ in range(num_respondents):
+                    record = st.session_state["filtered"].sample(1).iloc[0]
+                    answer, conf, _usage = synthesize_answer(record, q, persona)
+                    add_response(session, record, q, answer, conf)
+                    results.append(
+                        {
+                            "respondent_id": record["respondent_id"],
+                            "question": q,
+                            "answer": answer,
+                            "confidence": conf,
+                        }
+                    )
+                    counter += 1
+                    progress.progress(counter / total_iters)
+                    counter_placeholder.text(f"{counter}/{total_iters} answers done")
+
+            progress.empty()
+            counter_placeholder.empty()
             df_out = pd.DataFrame(results)
 
         st.success("Generation complete!")
