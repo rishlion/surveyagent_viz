@@ -173,10 +173,11 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
             df_out = pd.DataFrame(results)
 
         st.success("Generation complete!")
-        st.dataframe(df_out)
         
         st.subheader("Result: Review survey responses!")
 
+        st.dataframe(df_out)
+        
         st.download_button(
             "Download CSV",
             data=df_out.to_csv(index=False),
