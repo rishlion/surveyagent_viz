@@ -88,7 +88,10 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     st.dataframe(st.session_state["filtered"].head())
 
     st.subheader("Step 2 · 📋 Build your question list")
-
+    st.caption(
+        "For multiple choice questions,  use this format: 'What's your favorite color? [Red, Green, Blue]'"
+    )
+    
     # Persistent list
     if "questions" not in st.session_state:
         st.session_state.questions = []
