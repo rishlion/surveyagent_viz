@@ -125,7 +125,7 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     )
     generate = st.button(gen_label, disabled=num_q == 0)
 
-    st.subheader("Result: Review survey responses!")
+    
 
     if generate:
         filtered_df = st.session_state["filtered"]
@@ -174,6 +174,8 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
 
         st.success("Generation complete!")
         st.dataframe(df_out)
+        
+        st.subheader("Result: Review survey responses!")
 
         st.download_button(
             "Download CSV",
