@@ -176,6 +176,9 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
 
         st.success("Generation complete!")
         
+        # NEW — make results visible to other pages
+        st.session_state["latest_df"] = df_out             
+
         st.subheader("Result: 📈 Review survey responses!")
 
         st.dataframe(df_out)
