@@ -16,7 +16,7 @@ UPLOAD_DIR = Path("data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 create_db_and_tables(DB_PATH)
 
-st.sidebar.title("Survey Agent MVP")
+st.sidebar.title("Data & Filters")
 
 # -------------------------------------------------------------------------
 # 1 — Choose transcript data source
@@ -78,8 +78,10 @@ if "transcripts" in st.session_state:
 # 3 — Question list builder (main pane)
 # -------------------------------------------------------------------------
 if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
-    st.header("Survey Agent :robot:")
-    st.subheader("Step 1: Review sample personas")
+    st.header("Survey Agent")
+    st.caption("Instantly generate realistic, demographic-matched survey answers with an LLM-powered synthetic panel.")
+
+    st.subheader("Step 1: 👥 Review sample personas")
     st.dataframe(st.session_state["filtered"].head())
 
     st.subheader("Step 2: 📋 Build your question list")
@@ -111,7 +113,7 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     # ---------------------------------------------------------------------
     # Generation controls
     # ---------------------------------------------------------------------
-    st.subheader("Step 3: Select number of survey responses")
+    st.subheader("Step 3: 📊 Select number of survey responses")
     num_resp = st.slider("Respondents per question", 1, 200, 10)
     persona = st.radio(
         "Persona",
@@ -174,7 +176,7 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
 
         st.success("Generation complete!")
         
-        st.subheader("Result: Review survey responses!")
+        st.subheader("Result: 📈 Review survey responses!")
 
         st.dataframe(df_out)
         
