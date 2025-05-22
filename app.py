@@ -19,17 +19,17 @@ create_db_and_tables(DB_PATH)
 st.sidebar.title("Survey Agent MVP")
 
 # -------------------------------------------------------------------------
-# 1 — Data source selection
+# 1 — Choose transcript data source
 # -------------------------------------------------------------------------
 data_source = st.sidebar.radio(
-    "Choose transcript data source:",
-    ("Use sample data", "Upload my own"),
+    "Transcript data:",
+    ("Use bundled sample", "Upload my own"),
     index=0,
 )
 
 if data_source == "Upload my own":
     uploaded_file = st.sidebar.file_uploader(
-        "Upload transcripts CSV/Parquet", type=["csv", "parquet"]
+        "Upload transcripts CSV or Parquet", type=["csv", "parquet"]
     )
     if uploaded_file:
         file_path = UPLOAD_DIR / uploaded_file.name
@@ -38,18 +38,59 @@ if data_source == "Upload my own":
         transcripts_df = load_transcripts(file_path)
         st.session_state["transcripts"] = transcripts_df
         st.sidebar.success(f"Loaded {len(transcripts_df)} transcripts")
-else:  # sample data
+else:
     sample_path = Path(__file__).parent / "sample_transcripts.csv"
     transcripts_df = load_transcripts(sample_path)
     st.session_state["transcripts"] = transcripts_df
     st.sidebar.info(f"Using bundled sample data ({len(transcripts_df)} rows)")
 
 # -------------------------------------------------------------------------
-# 2 — Survey builder & synthetic generation
+# 2 — Demographic filters (sidebar)
 # -------------------------------------------------------------------------
 if "transcripts" in st.session_state:
-    st.header("Transcript preview")
-    st.dataframe(st.session_state["transcripts"].head())
+    df = st.session_state["transcripts"]
+
+    # --- Age slider -------------------------------------------------------
+    if "age" in df.columns:
+        age_min, age_max = int(df["age"].min()), int(df["age"].max())
+        age_range = st.sidebar.slider(
+            "Age range", age_min, age_max, (age_min, age_max)
+        )
+        age_mask = df["age"].between(*age_range)
+    else:
+        age_mask = True  # no age column present
+
+    # --- Gender filter ----------------------------------------------------
+    if "gender" in df.columns:
+        genders = sorted(df["gender"].dropna().unique())
+        gender_sel = st.sidebar.multiselect(
+            "Gender", options=genders, default=genders
+        )
+        gender_mask = df["gender"].isin(gender_sel)
+    else:
+        gender_mask = True
+
+    # --- Region filter ----------------------------------------------------
+    if "region" in df.columns:
+        regions = sorted(df["region"].dropna().unique())
+        region_sel = st.sidebar.multiselect(
+            "Region", options=regions, default=regions
+        )
+        region_mask = df["region"].isin(region_sel)
+    else:
+        region_mask = True
+
+    # Apply masks ----------------------------------------------------------
+    filtered_df = df[age_mask & gender_mask & region_mask]
+    st.sidebar.markdown(f"**Matched transcripts:** {len(filtered_df)}")
+    st.session_state["filtered"] = filtered_df
+
+# -------------------------------------------------------------------------
+# 3 — Preview & survey builder (main pane)
+# -------------------------------------------------------------------------
+if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
+    st.header("Transcript preview (after filters)")
+    st.dataframe(st.session_state["filtered"].head())
 
     st.subheader("Survey builder")
     question = st.text_area(
@@ -58,24 +99,24 @@ if "transcripts" in st.session_state:
         height=100,
     )
     num_respondents = st.slider("Synthetic respondents", 1, 200, 10)
-
-    # Keep persona values lowercase to match agent.py expectations
     persona = st.radio(
         "Persona",
         ["pollster", "marketer", "product manager"],
         horizontal=True,
     )
 
-    run = st.button("Generate synthetic answers")
+    generate = st.button(
+        "Generate synthetic answers",
+        disabled=len(st.session_state["filtered"]) == 0,
+    )
 
-    if run and question:
+    if generate and question:
         with st.spinner("Generating answers…"):
             session = get_session(DB_PATH)
-            transcripts = st.session_state["transcripts"]
             results = []
 
             for _ in range(num_respondents):
-                record = transcripts.sample(1).iloc[0]
+                record = st.session_state["filtered"].sample(1).iloc[0]
                 answer, conf, _usage = synthesize_answer(record, question, persona)
                 add_response(session, record, question, answer, conf)
                 results.append(
@@ -86,14 +127,16 @@ if "transcripts" in st.session_state:
                     }
                 )
 
-            df = pd.DataFrame(results)
+            df_out = pd.DataFrame(results)
 
         st.success("Generation complete!")
-        st.dataframe(df)
-
+        st.dataframe(df_out)
         st.download_button(
             "Download CSV",
-            data=df.to_csv(index=False),
+            data=df_out.to_csv(index=False),
             file_name="synthetic_responses.csv",
             mime="text/csv",
         )
+
+elif "transcripts" in st.session_state and len(st.session_state["filtered"]) == 0:
+    st.warning("No transcripts match the selected demographic filters.")
