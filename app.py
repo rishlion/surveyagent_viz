@@ -4,7 +4,7 @@ from pathlib import Path
 from agent import synthesize_answer
 from utils import load_transcripts
 from data_model import create_db_and_tables, add_response, get_session
-import openai
+import openai, json
 
 # -------------------------------------------------------------------------
 # Config & setup
@@ -79,23 +79,40 @@ if "transcripts" in st.session_state:
     st.session_state["filtered"] = filtered_df
 
 # -------------------------------------------------------------------------
-# 3 — Preview & survey builder
+# 3 — Question list builder (main pane)
 # -------------------------------------------------------------------------
 if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     st.header("Transcript preview (after filters)")
     st.dataframe(st.session_state["filtered"].head())
 
-    st.subheader("Survey builder")
+    st.subheader("📋 Build your question list")
 
-    questions_raw = st.text_area(
-        "Enter one question per line",
-        "Who will you vote for in the upcoming election?",
-        height=150,
-    )
-    questions = [q.strip() for q in questions_raw.splitlines() if q.strip()]
-    num_questions = len(questions)
+    # Keep a persistent list in session_state
+    if "questions" not in st.session_state:
+        st.session_state["questions"] = []
 
-    num_respondents = st.slider("Synthetic respondents per question", 1, 200, 10)
+    # Input + add button
+    new_q = st.text_input("Type a question and click “Add”", key="new_q_input")
+    if st.button("Add question") and new_q.strip():
+        st.session_state["questions"].append(new_q.strip())
+        st.session_state["new_q_input"] = ""  # clear box
+        st.experimental_rerun()
+
+    # Show current list with delete buttons
+    for i, q in enumerate(st.session_state["questions"]):
+        cols = st.columns((10, 1))
+        cols[0].markdown(f"**Q{i+1}.** {q}")
+        if cols[1].button("✖︎", key=f"del_{i}"):
+            st.session_state["questions"].pop(i)
+            st.experimental_rerun()
+
+    num_q = len(st.session_state["questions"])
+
+    # ---------------------------------------------------------------------
+    # Generation controls
+    # ---------------------------------------------------------------------
+    st.subheader("Synthetic generation")
+    num_respondents = st.slider("Respondents per question", 1, 200, 10)
     persona = st.radio(
         "Persona",
         ["pollster", "marketer", "product manager"],
@@ -103,8 +120,8 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     )
 
     generate = st.button(
-        f"Generate ({num_questions * num_respondents} answers)",
-        disabled=(num_questions == 0 or len(st.session_state["filtered"]) == 0),
+        f"Generate {num_q * num_respondents} answers",
+        disabled=(num_q == 0),
     )
 
     if generate:
@@ -112,15 +129,18 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
             session = get_session(DB_PATH)
             results = []
 
-            total_iters = num_questions * num_respondents
+            total_iters = num_q * num_respondents
             progress = st.progress(0)
             counter_placeholder = st.empty()
             counter = 0
 
-            for q in questions:
+            for q in st.session_state["questions"]:
                 for _ in range(num_respondents):
                     record = st.session_state["filtered"].sample(1).iloc[0]
-                    answer, conf, _usage = synthesize_answer(record, q, persona)
+                    try:
+                        answer, conf, _usage = synthesize_answer(record, q, persona)
+                    except (json.JSONDecodeError, KeyError):
+                        answer, conf = "ERROR: malformed response", 0
                     add_response(session, record, q, answer, conf)
                     results.append(
                         {
@@ -140,6 +160,7 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
 
         st.success("Generation complete!")
         st.dataframe(df_out)
+
         st.download_button(
             "Download CSV",
             data=df_out.to_csv(index=False),
