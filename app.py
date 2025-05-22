@@ -78,10 +78,11 @@ if "transcripts" in st.session_state:
 # 3 — Question list builder (main pane)
 # -------------------------------------------------------------------------
 if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
-    st.header("Transcript preview (after filters)")
+    st.header("Survey Agent :robot:")
+    st.subheader("Step 1: Review sample personas")
     st.dataframe(st.session_state["filtered"].head())
 
-    st.subheader("📋 Build your question list")
+    st.subheader("Step 2: 📋 Build your question list")
 
     # Persistent list
     if "questions" not in st.session_state:
@@ -110,7 +111,7 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     # ---------------------------------------------------------------------
     # Generation controls
     # ---------------------------------------------------------------------
-    st.subheader("Synthetic generation")
+    st.subheader("Step 3: Select number of survey responses")
     num_resp = st.slider("Respondents per question", 1, 200, 10)
     persona = st.radio(
         "Persona",
@@ -123,6 +124,8 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
         else f"Generate {num_q * num_resp} answers"
     )
     generate = st.button(gen_label, disabled=num_q == 0)
+
+    st.subheader("Result: Review survey responses!")
 
     if generate:
         filtered_df = st.session_state["filtered"]
