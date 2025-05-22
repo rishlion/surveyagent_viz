@@ -51,28 +51,25 @@ if "transcripts" in st.session_state:
     df = st.session_state["transcripts"]
 
     # Age
+    age_mask = True
     if "age" in df.columns:
         age_min, age_max = int(df["age"].min()), int(df["age"].max())
         age_range = st.sidebar.slider("Age range", age_min, age_max, (age_min, age_max))
         age_mask = df["age"].between(*age_range)
-    else:
-        age_mask = True
 
     # Gender
+    gender_mask = True
     if "gender" in df.columns:
         genders = sorted(df["gender"].dropna().unique())
         gender_sel = st.sidebar.multiselect("Gender", genders, default=genders)
         gender_mask = df["gender"].isin(gender_sel)
-    else:
-        gender_mask = True
 
     # Region
+    region_mask = True
     if "region" in df.columns:
         regions = sorted(df["region"].dropna().unique())
         region_sel = st.sidebar.multiselect("Region", regions, default=regions)
         region_mask = df["region"].isin(region_sel)
-    else:
-        region_mask = True
 
     filtered_df = df[age_mask & gender_mask & region_mask]
     st.sidebar.markdown(f"**Matched transcripts:** {len(filtered_df)}")
@@ -87,55 +84,59 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
 
     st.subheader("📋 Build your question list")
 
-    # Keep a persistent list in session_state
+    # Persistent list
     if "questions" not in st.session_state:
-        st.session_state["questions"] = []
+        st.session_state.questions = []
 
-    # Input + add button
-    new_q = st.text_input("Type a question and click “Add”", key="new_q_input")
-    if st.button("Add question") and new_q.strip():
-        st.session_state["questions"].append(new_q.strip())
-        st.session_state["new_q_input"] = ""  # clear box
-        st.experimental_rerun()
+    # --- Text input + callback -------------------------------------------
+    def add_question():
+        q = st.session_state.new_q_input.strip()
+        if q:
+            st.session_state.questions.append(q)
+            st.session_state.new_q_input = ""   # OK inside callback
 
-    # Show current list with delete buttons
-    for i, q in enumerate(st.session_state["questions"]):
+    st.text_input("Type a question and click “Add”", key="new_q_input")
+    st.button("Add question", on_click=add_question)
+
+    # Show existing questions with delete
+    for i, q in enumerate(st.session_state.questions):
         cols = st.columns((10, 1))
         cols[0].markdown(f"**Q{i+1}.** {q}")
         if cols[1].button("✖︎", key=f"del_{i}"):
-            st.session_state["questions"].pop(i)
+            st.session_state.questions.pop(i)
             st.experimental_rerun()
 
-    num_q = len(st.session_state["questions"])
+    num_q = len(st.session_state.questions)
 
     # ---------------------------------------------------------------------
     # Generation controls
     # ---------------------------------------------------------------------
     st.subheader("Synthetic generation")
-    num_respondents = st.slider("Respondents per question", 1, 200, 10)
+    num_resp = st.slider("Respondents per question", 1, 200, 10)
     persona = st.radio(
         "Persona",
         ["pollster", "marketer", "product manager"],
         horizontal=True,
     )
 
-    generate = st.button(
-        f"Generate {num_q * num_respondents} answers",
-        disabled=(num_q == 0),
+    gen_label = (
+        f"Generate {num_resp} answers" if num_q == 1
+        else f"Generate {num_q * num_resp} answers"
     )
+    generate = st.button(gen_label, disabled=num_q == 0)
 
     if generate:
         with st.spinner("Generating answers…"):
             session = get_session(DB_PATH)
             results = []
 
-            total_iters = num_q * num_respondents
+            total_iters = num_q * num_resp
             progress = st.progress(0)
             counter_placeholder = st.empty()
             counter = 0
 
-            for q in st.session_state["questions"]:
-                for _ in range(num_respondents):
+            for q in st.session_state.questions:
+                for _ in range(num_resp):
                     record = st.session_state["filtered"].sample(1).iloc[0]
                     try:
                         answer, conf, _usage = synthesize_answer(record, q, persona)
@@ -152,7 +153,7 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
                     )
                     counter += 1
                     progress.progress(counter / total_iters)
-                    counter_placeholder.text(f"{counter}/{total_iters} answers done")
+                    counter_placeholder.text(f"{counter}/{total_iters} answers")
 
             progress.empty()
             counter_placeholder.empty()
@@ -160,7 +161,6 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
 
         st.success("Generation complete!")
         st.dataframe(df_out)
-
         st.download_button(
             "Download CSV",
             data=df_out.to_csv(index=False),
