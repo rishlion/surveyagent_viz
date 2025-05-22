@@ -161,6 +161,9 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
                     results.append(
                         {
                             "respondent_id": record["respondent_id"],
+                            "age": record.get("age"),
+                            "gender": record.get("gender"),
+                            "region": record.get("region"),
                             "question": q,
                             "answer": answer,
                             "confidence": conf,
@@ -173,6 +176,11 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
             progress.empty()
             counter_placeholder.empty()
             df_out = pd.DataFrame(results)
+
+            st.session_state["latest_df"] = df_out
+            st.toast("Generation complete! Opening Results…", icon="✅")
+            st.switch_page("pages/1_Results.py")
+
 
         st.success("Generation complete!")
         
