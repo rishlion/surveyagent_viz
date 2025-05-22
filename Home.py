@@ -4,7 +4,7 @@ from pathlib import Path
 from agent import synthesize_answer
 from utils import load_transcripts
 from data_model import create_db_and_tables, add_response, get_session
-import openai, json, math
+import openai, json
 
 # -------------------------------------------------------------------------
 # Config & setup
@@ -50,7 +50,7 @@ else:
 if "transcripts" in st.session_state:
     df = st.session_state["transcripts"]
 
-    age_mask, gender_mask, region_mask = True, True, True
+    age_mask = gender_mask = region_mask = True
 
     # Age
     if "age" in df.columns:
@@ -79,18 +79,21 @@ if "transcripts" in st.session_state:
 # -------------------------------------------------------------------------
 if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     st.header("Survey Agent")
-    st.caption("Instantly generate realistic, demographic-matched survey answers with an LLM-powered synthetic panel.")
+    st.caption(
+        "Instantly generate realistic, demographic-matched survey answers "
+        "with an LLM-powered synthetic panel."
+    )
 
-    st.subheader("Step 1: 👥 Review sample personas")
+    st.subheader("Step 1 · 👥 Review sample personas")
     st.dataframe(st.session_state["filtered"].head())
 
-    st.subheader("Step 2: 📋 Build your question list")
+    st.subheader("Step 2 · 📋 Build your question list")
 
     # Persistent list
     if "questions" not in st.session_state:
         st.session_state.questions = []
 
-    # --- Text input + callback -------------------------------------------
+    # --- Add question callback ------------------------------------------
     def add_question():
         q = st.session_state.new_q_input.strip()
         if q:
@@ -100,20 +103,27 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     st.text_input("Type a question and click “Add”", key="new_q_input")
     st.button("Add question", on_click=add_question)
 
-    # Show existing questions with delete
+    # --- Delete callback -------------------------------------------------
+    def delete_question(idx: int):
+        st.session_state.questions.pop(idx)
+
     for i, q in enumerate(st.session_state.questions):
         cols = st.columns((10, 1))
         cols[0].markdown(f"**Q{i+1}.** {q}")
-        if cols[1].button("✖︎", key=f"del_{i}"):
-            st.session_state.questions.pop(i)
-            st.experimental_rerun()
+        cols[1].button(
+            "✖︎",
+            key=f"del_{i}",
+            on_click=delete_question,
+            args=(i,),
+        )
 
+    # Number of questions (needed below)
     num_q = len(st.session_state.questions)
 
     # ---------------------------------------------------------------------
     # Generation controls
     # ---------------------------------------------------------------------
-    st.subheader("Step 3: 📊 Select number of survey responses")
+    st.subheader("Step 3 · 📊 Select number of survey responses")
     num_resp = st.slider("Respondents per question", 1, 200, 10)
     persona = st.radio(
         "Persona",
@@ -122,19 +132,22 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     )
 
     gen_label = (
-        f"Generate {num_resp} answers" if num_q == 1
+        f"Generate {num_resp} answers"
+        if num_q == 1
         else f"Generate {num_q * num_resp} answers"
     )
     generate = st.button(gen_label, disabled=num_q == 0)
 
-    
-
+    # ---------------------------------------------------------------------
+    # Generation process
+    # ---------------------------------------------------------------------
     if generate:
         filtered_df = st.session_state["filtered"]
 
         if num_resp > len(filtered_df):
             st.warning(
-                "Requested more respondents than available transcripts – sampling with replacement."
+                "Requested more respondents than available transcripts "
+                "– sampling with replacement."
             )
 
         respondent_pool = (
@@ -152,7 +165,7 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
             counter = 0
 
             for record in respondent_pool:
-                for q in st.session_state["questions"]:
+                for q in st.session_state.questions:
                     try:
                         answer, conf, _usage = synthesize_answer(record, q, persona)
                     except (json.JSONDecodeError, KeyError):
@@ -175,28 +188,12 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
 
             progress.empty()
             counter_placeholder.empty()
-            df_out = pd.DataFrame(results)
 
-            st.session_state["latest_df"] = df_out
-            st.toast("Generation complete! Opening Results…", icon="✅")
-            st.switch_page("pages/1_Results.py")
-
-
-        st.success("Generation complete!")
-        
-        # NEW — make results visible to other pages
-        st.session_state["latest_df"] = df_out             
-
-        st.subheader("Result: 📈 Review survey responses!")
-
-        st.dataframe(df_out)
-        
-        st.download_button(
-            "Download CSV",
-            data=df_out.to_csv(index=False),
-            file_name="synthetic_responses.csv",
-            mime="text/csv",
-        )
+        # Save for Results page and redirect
+        df_out = pd.DataFrame(results)
+        st.session_state["latest_df"] = df_out
+        st.toast("Generation complete! Opening Results…", icon="✅")
+        st.switch_page("pages/1_Results.py")
 
 elif "transcripts" in st.session_state and len(st.session_state["filtered"]) == 0:
     st.warning("No transcripts match the selected demographic filters.")
