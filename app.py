@@ -4,7 +4,7 @@ from pathlib import Path
 from agent import synthesize_answer
 from utils import load_transcripts
 from data_model import create_db_and_tables, add_response, get_session
-import openai, json
+import openai, json, math
 
 # -------------------------------------------------------------------------
 # Config & setup
@@ -50,22 +50,21 @@ else:
 if "transcripts" in st.session_state:
     df = st.session_state["transcripts"]
 
+    age_mask, gender_mask, region_mask = True, True, True
+
     # Age
-    age_mask = True
     if "age" in df.columns:
         age_min, age_max = int(df["age"].min()), int(df["age"].max())
         age_range = st.sidebar.slider("Age range", age_min, age_max, (age_min, age_max))
         age_mask = df["age"].between(*age_range)
 
     # Gender
-    gender_mask = True
     if "gender" in df.columns:
         genders = sorted(df["gender"].dropna().unique())
         gender_sel = st.sidebar.multiselect("Gender", genders, default=genders)
         gender_mask = df["gender"].isin(gender_sel)
 
     # Region
-    region_mask = True
     if "region" in df.columns:
         regions = sorted(df["region"].dropna().unique())
         region_sel = st.sidebar.multiselect("Region", regions, default=regions)
@@ -93,7 +92,7 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
         q = st.session_state.new_q_input.strip()
         if q:
             st.session_state.questions.append(q)
-            st.session_state.new_q_input = ""   # OK inside callback
+            st.session_state.new_q_input = ""
 
     st.text_input("Type a question and click “Add”", key="new_q_input")
     st.button("Add question", on_click=add_question)
@@ -126,6 +125,18 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
     generate = st.button(gen_label, disabled=num_q == 0)
 
     if generate:
+        filtered_df = st.session_state["filtered"]
+
+        if num_resp > len(filtered_df):
+            st.warning(
+                "Requested more respondents than available transcripts – sampling with replacement."
+            )
+
+        respondent_pool = (
+            filtered_df.sample(n=num_resp, replace=num_resp > len(filtered_df))
+            .to_dict("records")
+        )
+
         with st.spinner("Generating answers…"):
             session = get_session(DB_PATH)
             results = []
@@ -135,9 +146,8 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
             counter_placeholder = st.empty()
             counter = 0
 
-            for q in st.session_state.questions:
-                for _ in range(num_resp):
-                    record = st.session_state["filtered"].sample(1).iloc[0]
+            for record in respondent_pool:
+                for q in st.session_state["questions"]:
                     try:
                         answer, conf, _usage = synthesize_answer(record, q, persona)
                     except (json.JSONDecodeError, KeyError):
@@ -161,6 +171,7 @@ if "filtered" in st.session_state and len(st.session_state["filtered"]) > 0:
 
         st.success("Generation complete!")
         st.dataframe(df_out)
+
         st.download_button(
             "Download CSV",
             data=df_out.to_csv(index=False),
